@@ -603,6 +603,63 @@ def editar_placa():
         return {"status": "success", "id": id_ticket}, 200
     except Exception as e:
         return {"status": "error", "message": str(e)}, 500
+    
+@app.route('/editar_tipo', methods=['POST'])
+@login_required
+def editar_tipo():
+    id_ticket = request.form.get('id_ticket')
+    nuevo_tipo_base = request.form.get('nuevo_tipo', '').upper().strip()
+    
+    # Solo permitimos estas dos opciones base
+    if nuevo_tipo_base not in ['AUTO', 'MOTO']:
+        return jsonify({"status": "error", "message": "Solo se permite AUTO o MOTO"}), 400
+
+    try:
+        with conectar_db() as conn:
+            # Primero revisamos si el ticket actual es nocturno
+            t = conn.execute("SELECT tipo FROM tickets WHERE id = ?", (id_ticket,)).fetchone()
+            if t:
+                # Si el tipo actual tiene "_N", mantenemos el sufijo en el nuevo tipo
+                es_nocturno = "_N" in t['tipo']
+                tipo_final = nuevo_tipo_base + "_N" if es_nocturno else nuevo_tipo_base
+                
+                conn.execute("UPDATE tickets SET tipo = ? WHERE id = ?", (tipo_final, id_ticket))
+                conn.commit()
+                return jsonify({"status": "success"})
+            return jsonify({"status": "error", "message": "Ticket no encontrado"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500    
+
+@app.route('/revertir_cobro/<int:id>', methods=['POST'])
+@login_required
+def revertir_cobro(id):
+    clave_ingresada = request.form.get('clave_maestra')
+    clave_real = obtener_config_maestra() # Usamos tu función de seguridad existente
+
+    if clave_ingresada == clave_real:
+        try:
+            with conectar_db() as conn:
+                # 1. Verificamos que el ticket realmente esté PAGADO
+                t = conn.execute("SELECT estado FROM tickets WHERE id = ?", (id,)).fetchone()
+                
+                if t and t['estado'] == 'PAGADO':
+                    # 2. Lo devolvemos a estado ACTIVO y limpiamos los datos de cobro
+                    conn.execute("""UPDATE tickets SET 
+                                 estado = 'ACTIVO', 
+                                 fecha_salida = NULL, 
+                                 monto_pagado = 0,
+                                 usuario_cobro = NULL 
+                                 WHERE id = ?""", (id,))
+                    conn.commit()
+                    flash("El cobro ha sido anulado. El vehículo está activo nuevamente.", "exito")
+                else:
+                    flash("No se puede revertir: el registro no existe o ya está activo.", "error")
+        except Exception as e:
+            flash(f"Error en la base de datos: {str(e)}", "error")
+    else:
+        flash("Contraseña Maestra incorrecta.", "error")
+
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

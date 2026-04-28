@@ -383,47 +383,69 @@
                             </tr>
                         </thead>    
                         <tbody>
-                            {% for reg in ultimos_movimientos %}
-                            <tr class="{% if reg['estado'] == 'ACTIVO' %}row-active{% endif %}">
-                                <td>{{ reg['id'] }}</td>
-                                <td class="fw-bold text-info placa-editable" 
-                                    contenteditable="true" 
-                                    onblur="guardarPlacaRapido(this, '{{ reg.id }}')"
-                                    onkeydown="verificarEnter(event, this)"
-                                    data-original="{{ reg.placa }}">
-                                    {{ reg.placa if reg.placa else '' }}
-                                </td>
-                                <td class="fw-bold text-info">{{ reg['tipo'] }}</td>                             
-                                <td>{{ reg['hora_e'] }}</td>
-                                <td>{{ reg['hora_s'] if reg['hora_s'] else '--:--' }}</td>
-                                <td class="text-warning fw-bold">Bs. {{ reg['monto_pagado'] }}</td>
-                                <td><span class="badge {% if reg['estado'] == 'ACTIVO' %}bg-primary{% else %}bg-success{% endif %}">{{ reg['estado'] }}</span></td>
-                                <td>
-                                    <div style="font-size: 0.9rem; line-height: 1; margin: 0;">
-                                        <span class="text-secondary">E:</span> {{ reg['usuario_registro'] or '---' }}<br>
-                                        <span class="text-success">S:</span> {{ reg['usuario_cobro'] or '---' }}
-                                    </div>
-                                </td>
-                                <td>
-                                    <a href="/reimprimir/{{ reg['id'] }}" class="btn btn-sm btn-outline-light" title="Reimprimir">🖨️</a>
-                                    
-                                    {% if reg.estado == 'ACTIVO' %}
-                                    <button type="button" class="btn btn-sm btn-outline-danger ms-1" onclick="solicitarClaveEliminar('{{ reg.id }}')">
-                                        Eliminar
-                                    </button>
-                                    {% endif %}
+    {% for reg in ultimos_movimientos %}
+    <tr class="{% if reg.estado == 'ACTIVO' %}row-active{% endif %}">
+        <td>{{ reg.id }}</td>
+        
+        <td class="fw-bold text-info placa-editable" 
+            contenteditable="true" 
+            onblur="guardarPlacaRapido(this, '{{ reg.id }}')"
+            onkeydown="verificarEnter(event, this)"
+            data-original="{{ reg.placa }}">
+            {{ reg.placa if reg.placa else '' }}
+        </td>
 
-                                    {% if 'ACTIVO' in reg.estado %}
-                                        <form action="{{ url_for('marcar_nocturno', id=reg.id) }}" method="POST" style="display:inline;">
-                                            <button type="submit" class="btn btn-sm btn-warning" title="Toda la Noche (10 BS)">
-                                                🌙 Noche
-                                            </button>
-                                        </form>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
+        <td class="fw-bold" style="cursor: pointer;" 
+            onclick="cambiarTipo('{{ reg.id }}', '{{ reg.tipo }}', this)" 
+            title="Clic para cambiar entre AUTO o MOTO">
+            {% if 'MOTO' in reg.tipo %}
+                <span class="text-warning">🏍️ {{ reg.tipo }}</span>
+            {% else %}
+                <span class="text-info">🚗 {{ reg.tipo }}</span>
+            {% endif %}
+        </td>                             
+        
+        <td>{{ reg.hora_e }}</td>
+        <td>{{ reg.hora_s if reg.hora_s else '--:--' }}</td>
+        <td class="text-warning fw-bold">Bs. {{ reg.monto_pagado }}</td>
+        
+        <td>
+            <span class="badge {% if reg.estado == 'ACTIVO' %}bg-primary{% else %}bg-success{% endif %}">
+                {{ reg.estado }}
+            </span>
+        </td>
+
+        <td>
+            <div style="font-size: 0.9rem; line-height: 1; margin: 0;">
+                <span class="text-secondary">E:</span> {{ reg.usuario_registro or '---' }}<br>
+                <span class="text-success">S:</span> {{ reg.usuario_cobro or '---' }}
+            </div>
+        </td>
+
+        <td>
+            <a href="/reimprimir/{{ reg.id }}" class="btn btn-sm btn-outline-light" title="Reimprimir">🖨️</a>
+            
+            {% if reg.estado == 'ACTIVO' %}
+                <button type="button" class="btn btn-sm btn-outline-danger ms-1" onclick="solicitarClaveEliminar('{{ reg.id }}')" title="Eliminar Registro">
+                    🗑️
+                </button>
+
+                <form action="{{ url_for('marcar_nocturno', id=reg.id) }}" method="POST" style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-warning" title="Aplicar Tarifa Noche (10 BS)">
+                        🌙
+                    </button>
+                </form>
+            {% endif %}
+
+            {% if reg.estado == 'PAGADO' %}
+                <button type="button" class="btn btn-sm btn-outline-danger ms-1" onclick="solicitarClaveRevertir('{{ reg.id }}')" title="Error de cobro: Reabrir ticket">
+                    🔄 Reabrir
+                </button>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</tbody>
                     </table>
                 </div>
             </div>
@@ -796,6 +818,55 @@ function ordenarPorHoraEntrada() {
     
     // Reinsertar las filas ordenadas en la tabla
     tbody.append(...filas);
+}
+
+async function cambiarTipo(id, tipoActual, elemento) {
+    // Simplificamos la pregunta para que el operador no se confunda
+    let nuevoTipo = prompt("Cambiar categoría:\nEscriba AUTO o MOTO", tipoActual.replace('_N', ''));
+    
+    if (!nuevoTipo) return;
+    nuevoTipo = nuevoTipo.toUpperCase().trim();
+    
+    // Validación en el cliente también
+    if (nuevoTipo !== 'AUTO' && nuevoTipo !== 'MOTO') {
+        alert("⚠️ Categoría no válida. Solo use AUTO o MOTO.");
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('id_ticket', id);
+        formData.append('nuevo_tipo', nuevoTipo);
+
+        const response = await fetch('/editar_tipo', { method: 'POST', body: formData });
+        if (response.ok) {
+            location.reload(); 
+        } else {
+            alert("⚠️ Error al cambiar el tipo.");
+        }
+    } catch (error) {
+        alert("⚠️ Error de conexión.");
+    }
+}
+
+
+function solicitarClaveRevertir(id) {
+    const clave = prompt("⚠️ ATENCIÓN: Esto anulará el cobro y el tiempo seguirá corriendo.\nIngrese la Contraseña Maestra:");
+    
+    if (clave) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/revertir_cobro/' + id;
+        
+        const inputClave = document.createElement('input');
+        inputClave.type = 'hidden';
+        inputClave.name = 'clave_maestra';
+        inputClave.value = clave;
+        
+        form.appendChild(inputClave);
+        document.body.appendChild(form);
+        form.submit();
+    }
 }
 </script>
 

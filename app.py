@@ -92,34 +92,89 @@ def obtener_config_maestra():
         return "1234"
     
 # --- LÓGICA DE COBRO (VILLA DOLORES) ---
-def calcular_monto(tipo, minutos):
-    if minutos <= 0: return 0
-    minutos_original = minutos
-    minutos = minutos + 3
-    print(f"DEBUG: Tiempo real {minutos_original} min -> Calculando sobre {minutos} min")
-    if tipo == 'MOTO':
-        if minutos <= 30: return 2
-        elif minutos <= 60: return 3
-        elif minutos <= 80: return 4
-        elif minutos <= 100: return 5
-        elif minutos <= 120: return 6
-        else: return 6 + math.ceil((minutos - 120) / 20)
-    elif tipo == 'AUTO':
-        if minutos <= 25: return 3
-        elif minutos <= 40: return 4
-        elif minutos <= 60: return 5
-        minutos_restantes = minutos - 60
-        horas_completas = minutos_restantes // 60
-        minutos_en_hora_actual = minutos_restantes % 60
-        monto = 5 + (horas_completas * 5)
-        if minutos_en_hora_actual > 0:
-            if minutos_en_hora_actual <= 10:   monto += 1
-            elif minutos_en_hora_actual <= 30: monto += 2
-            elif minutos_en_hora_actual <= 40: monto += 3
-            elif minutos_en_hora_actual <= 50: monto += 4
-            else: monto += 5
-        return monto
-    return 0
+def calcular_monto(tipo, fecha_ent_str, fecha_sal_obj):
+    # Convertir la fecha de entrada de texto a objeto de tiempo
+    inicio = datetime.strptime(fecha_ent_str, '%Y-%m-%d %H:%M:%S')
+    fin = fecha_sal_obj
+
+    es_nocturno = "_N" in tipo
+    tipo_base = tipo.replace("_N", "") # Limpiamos el tipo para MOTO o AUTO
+
+    minutos_a_cobrar = 0
+    monto_base = 0
+
+    if es_nocturno:
+        monto_base = 10 # Base fija por la noche
+        
+        # Definir los límites de la noche (20:00 a 08:00)
+        if inicio.hour >= 20:
+            # Entró en la noche (ej. 21:00)
+            inicio_noche = inicio.replace(hour=20, minute=0, second=0, microsecond=0)
+            fin_noche = (inicio + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+        elif inicio.hour < 8:
+            # Entró en la madrugada (ej. 02:00 AM)
+            inicio_noche = (inicio - timedelta(days=1)).replace(hour=20, minute=0, second=0, microsecond=0)
+            fin_noche = inicio.replace(hour=8, minute=0, second=0, microsecond=0)
+        else:
+            # Entró de día (ej. 16:00)
+            inicio_noche = inicio.replace(hour=20, minute=0, second=0, microsecond=0)
+            fin_noche = (inicio + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+
+        minutos_tarde = 0
+        minutos_manana = 0
+
+        # Calcular tiempo consumido ANTES de las 20:00
+        if inicio < inicio_noche:
+            limite_tarde = min(fin, inicio_noche)
+            minutos_tarde = max(0, (limite_tarde - inicio).total_seconds() / 60)
+        
+        # Calcular tiempo consumido DESPUÉS de las 08:00 AM
+        if fin > fin_noche:
+            inicio_manana = max(inicio, fin_noche)
+            minutos_manana = max(0, (fin - inicio_manana).total_seconds() / 60)
+
+        # Unimos las horas del día ignorando el bloque nocturno
+        minutos_a_cobrar = math.ceil(minutos_tarde + minutos_manana)
+
+    else:
+        # Si NO es nocturno, cuenta todos los minutos transcurridos normalmente
+        minutos_a_cobrar = math.ceil((fin - inicio).total_seconds() / 60)
+
+    # Si fue marcado nocturno y no consumió tiempo de día, solo paga 10 Bs.
+    if minutos_a_cobrar <= 0 and es_nocturno:
+        return monto_base
+    elif minutos_a_cobrar <= 0:
+        return 0
+
+    # Aplicamos tu lógica original de cobro con los 3 minutos de tolerancia
+    minutos = minutos_a_cobrar + 3
+    monto_extra = 0
+
+    if tipo_base == 'MOTO':
+        if minutos <= 30: monto_extra = 2
+        elif minutos <= 60: monto_extra = 3
+        elif minutos <= 80: monto_extra = 4
+        elif minutos <= 100: monto_extra = 5
+        elif minutos <= 120: monto_extra = 6
+        else: monto_extra = 6 + math.ceil((minutos - 120) / 20)
+        
+    elif tipo_base == 'AUTO':
+        if minutos <= 25: monto_extra = 3
+        elif minutos <= 40: monto_extra = 4
+        elif minutos <= 60: monto_extra = 5
+        else:
+            minutos_restantes = minutos - 60
+            horas_completas = minutos_restantes // 60
+            minutos_en_hora_actual = minutos_restantes % 60
+            monto_extra = 5 + (horas_completas * 5)
+            if minutos_en_hora_actual > 0:
+                if minutos_en_hora_actual <= 10:   monto_extra += 1
+                elif minutos_en_hora_actual <= 30: monto_extra += 2
+                elif minutos_en_hora_actual <= 40: monto_extra += 3
+                elif minutos_en_hora_actual <= 50: monto_extra += 4
+                else: monto_extra += 5
+                
+    return monto_base + monto_extra
 
 # --- RUTAS ---
 @app.route('/setup', methods=['GET', 'POST'])
@@ -257,15 +312,17 @@ def buscar_placa():
         ahora = datetime.now()
         
         for row in rows:
-            # Calcular tiempo real
+            # Calcular tiempo total para mostrar en pantalla
             entrada = datetime.strptime(row['fecha_entrada'], '%Y-%m-%d %H:%M:%S')
-            minutos = math.ceil((ahora - entrada).total_seconds() / 60)
-            monto = calcular_monto(row['tipo'], minutos)
+            minutos_totales = math.ceil((ahora - entrada).total_seconds() / 60)
+            
+            # El cálculo monetario usa nuestra nueva función
+            monto = calcular_monto(row['tipo'], row['fecha_entrada'], ahora)
             
             resultados.append({
                 "id": row['id'],
                 "placa": row['placa'] if row['placa'] else "S/P",
-                "tiempo": minutos,
+                "tiempo": minutos_totales,
                 "monto": monto
             })
             
@@ -285,18 +342,21 @@ def salida_unificada():
         """, (dato, dato)).fetchone()
 
         if t:
+            # Calcular tiempo total para guardar en la base de datos
             entrada = datetime.strptime(t['fecha_entrada'], '%Y-%m-%d %H:%M:%S')
-            minutos = math.ceil((ahora - entrada).total_seconds() / 60)
-            cobro = calcular_monto(t['tipo'], minutos)
+            minutos_totales = math.ceil((ahora - entrada).total_seconds() / 60)
             
-            # GUARDAMOS QUIÉN COBRÓ (session['usuario'])
+            # El cálculo monetario usa nuestra nueva función
+            cobro = calcular_monto(t['tipo'], t['fecha_entrada'], ahora)
+            
+            # GUARDAMOS QUIÉN COBRÓ
             conn.execute("""UPDATE tickets SET 
                          fecha_salida=?, monto_pagado=?, estado='PAGADO', usuario_cobro=? 
                          WHERE id=?""",
                          (ahora.strftime('%Y-%m-%d %H:%M:%S'), cobro, session['usuario'], t['id']))
             conn.commit()
 
-            session['ticket_salida'] = {'placa': t['placa'], 'monto': cobro, 'tiempo': minutos}
+            session['ticket_salida'] = {'placa': t['placa'], 'monto': cobro, 'tiempo': minutos_totales}
         else:
             session['error'] = "Vehículo no encontrado o ya pagado."
             
@@ -517,6 +577,18 @@ def eliminar_vehiculo(id):
 
     return redirect(url_for('index'))
     
+@app.route('/marcar_nocturno/<int:id>', methods=['POST'])
+@login_required
+def marcar_nocturno(id):
+    with conectar_db() as conn:
+        t = conn.execute("SELECT tipo FROM tickets WHERE id = ?", (id,)).fetchone()
+        if t and not t['tipo'].endswith('_N'):
+            nuevo_tipo = t['tipo'] + "_N"
+            conn.execute("UPDATE tickets SET tipo = ? WHERE id = ?", (nuevo_tipo, id))
+            conn.commit()
+            flash("Vehículo marcado con Tarifa Nocturna.", "exito")
+    return redirect(url_for('index'))
+
 @app.route('/editar_placa', methods=['POST'])
 @login_required
 def editar_placa():

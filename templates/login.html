@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso - Parqueo Villa Dolores</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <style>
+        :root { --primary-color: #0dcaf0; --bg-dark: #0a0a0a; }
+        
+        body { 
+            background-color: var(--bg-dark); 
+            color: white; 
+            height: 100vh; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+        }
+
+        .login-card {
+            background: #161616;
+            padding: 35px;
+            border-radius: 20px;
+            border: 1px solid #333;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.7);
+        }
+
+        .logo-area {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+
+        .form-control {
+            background: #222;
+            border: 1px solid #444;
+            color: white;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        .form-control:focus {
+            background: #282828;
+            border-color: var(--primary-color);
+            color: white;
+            box-shadow: 0 0 0 0.25rem rgba(13, 202, 240, 0.25);
+        }
+
+        .btn-login {
+            background-color: var(--primary-color);
+            border: none;
+            color: #000;
+            font-weight: bold;
+            padding: 12px;
+            border-radius: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s;
+        }
+
+        .btn-login:hover {
+            background-color: #0baccc;
+            transform: translateY(-2px);
+        }
+
+        .error-msg {
+            background: rgba(220, 53, 69, 0.1);
+            border: 1px solid #dc3545;
+            color: #ff6b6b;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-card text-center">
+        <div class="logo-area"><img src="{{ url_for('static', filename='logo.png') }}" style="width: 80px;"></div>
+        <h3 class="fw-bold text-info mb-1">SISTEMA DE PARQUEO</h3>
+        <p class="text-white mb-4 small">Villa Dolores </p>
+
+        {% if error %}
+            <div class="error-msg">
+                ⚠️ {{ error }}
+            </div>
+        {% endif %}
+
+        <form action="/login" method="POST">
+            <div class="text-start mb-1 small text-white px-1">USUARIO</div>
+            <input type="text" name="usuario" class="form-control" placeholder="Ej: admin" required autofocus>
+            
+            <div class="text-start mb-1 small text-white px-1">CONTRASEÑA</div>
+            <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+            
+            <button type="submit" class="btn btn-login w-100 mt-2">
+                Ingresar al Sistema
+            </button>
+        </form>
+
+        <div class="mt-4 pt-3 border-top border-secondary">
+            <small class="text-white">v2.0 Build 2026</small>
+        </div>
+    </div>
+
+</body>
+</html>

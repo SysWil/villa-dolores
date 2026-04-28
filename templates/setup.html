@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Configuración Inicial - Parqueo PRO</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <style>
+        body { background-color: #0a0a0a; color: white; display: flex; align-items: center; justify-content: center; height: 100vh; }
+        .setup-card { background: #161616; padding: 40px; border-radius: 15px; border-top: 5px solid #0dcaf0; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 100%; max-width: 450px; }
+    </style>
+</head>
+<body>
+    <div class="setup-card">
+        <h2 class="fw-bold text-center mb-1">¡Bienvenido!</h2>
+        <p class="text-center text-secondary mb-4">Configuración del primer Administrador</p>
+        
+        {% if error %}
+        <div class="alert alert-danger p-2 text-center">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST">
+            <div class="mb-3">
+                <label class="form-label text-info fw-bold">Usuario Administrador</label>
+                <input type="text" name="username" class="form-control bg-dark text-white border-secondary" required placeholder="Ej. admin, carlos, jefe...">
+            </div>
+            <div class="mb-3">
+                <label class="form-label text-info fw-bold">Contraseña de Acceso</label>
+                <input type="password" name="password" class="form-control bg-dark text-white border-secondary" required placeholder="Contraseña para entrar al sistema">
+            </div>
+            <div class="mb-4 p-3 bg-dark border border-warning rounded">
+                <label class="form-label text-warning fw-bold">🔑 Clave Maestra Inicial</label>
+                <input type="text" name="master_key" class="form-control mb-1" required placeholder="Ej. 123456">
+                <small class="text-secondary" style="font-size: 0.75rem;">Esta clave se usará para revelar la caja y borrar el historial.</small>
+            </div>
+            <button type="submit" class="btn btn-info w-100 fw-bold fs-5">Configurar Sistema</button>
+        </form>
+    </div>
+</body>
+</html>

@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+    <title>Sistema de Parqueo - Villa Dolores   wilmer</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <style>
+        :root { --primary: #0dcaf0; --dark-bg: #0a0a0a; --card-bg: #161616; }
+        
+        body { background-color: var(--dark-bg); color: white; font-family: 'Segoe UI', sans-serif; margin: 0; }
+        .wrapper { display: flex; width: 100%; height: 100vh; overflow: hidden; }
+        
+        #sidebar { width: 320px; background: var(--card-bg); border-right: 1px solid #333; padding: 20px; display: flex; flex-direction: column; overflow-y: auto; }
+        #content { flex: 1; padding: 25px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* Esta clase mantendrá las tarjetas de arriba quietas */
+        .seccion-fija {
+            flex-shrink: 0; 
+            margin-bottom: 15px;
+        }
+
+        /* Esta clase hará que solo la tabla tenga scroll */
+        .seccion-scroll {
+            flex: 1; 
+            overflow-y: auto; 
+            padding-right: 5px; /* Espacio para que la barra de scroll no tape el contenido */
+        }
+
+        /* Opcional: Para que los títulos de la tabla no se pierdan al bajar */
+        .tabla-movimientos thead {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: #0a0a0a;
+        }
+
+        .stat-card { background: #222; padding: 15px; border-radius: 10px; margin-bottom: 12px; border-left: 4px solid var(--primary); }
+        .stat-label { font-size: 0.7rem; color: #888; text-transform: uppercase; }
+        .stat-value { font-size: 1.4rem; font-weight: bold; display: block; }
+
+        #ticket-imprimir { 
+            display: none; /* Se mantiene oculto en la web */
+            width: 72mm; /* Ajustado para dejar margen físico en papel de 80mm */
+            background: white; 
+            color: black; 
+            padding: 5px; 
+            font-family: Arial, sans-serif;
+            line-height: 1.1; /* Interlineado reducido */
+        }
+
+        @media print {
+            @page { 
+                size: 70mm auto; /* Forzamos el papel a 7cm */
+                margin: 0; 
+            }
+            
+            body { 
+                background: white !important; 
+                color: black !important; 
+            }
+
+            #ticket-imprimir { 
+                display: block !important; 
+                width: 70mm !important; /* Ancho exacto solicitado */
+                padding: 2mm;
+                margin: 0;
+                color: #000 !important; /* Negro puro */
+                font-family: Arial, sans-serif;
+            }
+
+            /* Evitar que el texto se vea gris o "suave" */
+            h1, h2, h3, h4, b, strong, div {
+                color: #000 !important;
+                text-shadow: none !important;
+            }
+
+            /* Ocultar todo el resto de la interfaz */
+            .wrapper, #sidebar, #content, .modal, .alert, .btn { 
+                display: none !important; 
+            }
+        }
+
+        
+        #lista_sugerencias .sugerencia-item { background: #212529; color: white; border-bottom: 1px solid #444; padding: 12px; cursor: pointer; }
+        /* Clase para cuando te mueves con el teclado */
+        #lista_sugerencias .sugerencia-item.active { background-color: var(--primary) !important; color: #000 !important; font-weight: bold; }
+        
+        .tabla-movimientos th { background-color: #222 !important; color: white !important; font-size: 0.85rem; }
+        .row-active { background-color: rgba(13, 202, 240, 0.1) !important; }
+
+        .bloque-protegido {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 10px;
+            border: 1px solid #333;
+        }
+
+        .capa-bloqueo {
+            position: absolute;
+            left: 0; 
+            width: 100%; 
+            background: #111 !important; /* Color negro sólido */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .revelado .capa-bloqueo {
+            opacity: 0;
+            pointer-events: none; /* Deja de estorbar cuando se revela */
+        }
+.logo-area {
+    padding: 10px 0;
+    gap: 12px; /* Espacio exacto entre el logo y el texto */
+}
+
+.logo-img {
+    width: 80px;
+    height: auto;
+    filter: drop-shadow(0 0 5px rgba(13, 202, 240, 0.3)); /* Sutil brillo cian */
+}
+
+.brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1; /* Elimina el espacio sobrante entre palabras */
+}
+
+.brand-title {
+    font-size: 1.8rem;
+    font-weight: 900;
+    letter-spacing: 2px;
+    color: var(--primary); /* El color cian que ya tienes definido */
+    margin: 0;
+}
+
+.brand-subtitle {
+    font-size: 1rem;
+    font-weight: 400;
+    color: #888;
+    letter-spacing: 4px;
+    margin-top: 2px;
+}
+
+/* Animación de pulso para el logo */
+@keyframes pulse-logo {
+    0% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(13, 202, 240, 0.2)); }
+    50% { transform: scale(1.05); filter: drop-shadow(0 0 10px rgba(13, 202, 240, 0.6)); }
+    100% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(13, 202, 240, 0.2)); }
+}
+.logo-img.pulse {
+    animation: pulse-logo 3s infinite ease-in-out;
+}
+
+.placa-editable:hover {
+    background: rgba(13, 202, 240, 0.2);
+    cursor: text;
+    outline: 1px dashed var(--primary);
+}
+.placa-editable:focus {
+    background: #000;
+    outline: 2px solid var(--primary);
+    color: #fff !important;
+}
+
+/* Nueva clase para las filas de sugerencia con formato de tabla */
+.sugerencia-item { 
+    display: grid; 
+    grid-template-columns: 1fr 2fr 1fr 1fr; /* 4 columnas */
+    gap: 10px;
+    align-items: center;
+    padding: 10px !important;
+    border-bottom: 1px solid #444;
+}
+.sugerencia-item span { font-size: 0.85rem; }
+.col-id { font-weight: bold; color: var(--primary); }
+.col-monto { color: #00ff00; font-weight: bold; }
+
+</style>
+</head>
+<body>
+
+    {% if ticket_entrada %}
+    <div id="ticket-imprimir" style="width: 74mm; margin: 0 auto; color: #000; font-family: 'Arial', sans-serif; line-height: 1.2;">
+        
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 3px;">
+            <div>
+                <h1 style="margin: 0; font-size: 28px; font-family: 'Arial Black', sans-serif; line-height: 0.8;">PARQUEO</h1>
+                <div style="font-size: 10px; font-weight: bold; margin-top: 2px;">🏠 Villa Dolores Calle 9 # 500</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 9px; font-weight: bold; border: 1px solid #000; padding: 2px 4px; border-radius: 4px; text-align: justify; text-justify: inter-word;"> CONSERVE ESTE TICKET LA PERDIDA TIENE UN COSTO DE BS. 30</div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;line-height:0.9">
+            <div style="flex: 1;">
+                <span style="font-size: 10px; font-weight: bold;">FECHA DE INGRESO:</span>
+                <div style="border: 1.5px solid #000; border-radius: 6px; padding: 2px 10px; font-size: 14px; font-weight: bold; text-align: center; background: #f0f0f0;">
+                    {{ ticket_entrada.fecha }}
+                </div>
+            </div>
+            <div style="margin-left: 10px; text-align: right;">
+                <span style="font-size: 9px; font-weight: bold;">TICKET</span><br>
+                <span style="font-size: 18px; font-weight: bold;">#{{ ticket_entrada.id }}</span>
+            </div>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 5px;">
+            <div style="flex: 1;">
+                <span style="font-size: 11px; font-weight: bold;">Placa:</span>
+                <div style="border: 2px solid #000; border-radius: 10px; height: 08mm; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold;">
+                    {{ ticket_entrada.placa if ticket_entrada.placa else '' }}
+                </div>
+            </div>
+            <div style="flex: 1;">
+                <span style="font-size: 11px; font-weight: bold;">Hora Ingreso:</span>
+                <div style="border: 2px solid #000; border-radius: 10px; height: 08mm; display: flex; align-items: center; justify-content: center; font-size: px; font-weight: bold;">
+                    {{ ticket_entrada.hora }}
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 11px; font-weight: bold;">
+                ¿DEJO LLAVE? 
+                <div style="display: inline-block; border: 1.5px solid #000; border-radius: 4px; width: 14mm; height: 5mm; vertical-align: middle;"></div>
+                
+                {% if 'MOTO' in ticket_entrada.tipo %}
+                    <span style="font-size: 16px; font-weight: 900; margin-left: 10px; font-family: 'Arial Black', sans-serif;">
+                        MOTO 
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <div class="wrapper">
+        <nav id="sidebar">
+            <div class="logo-area d-flex align-items-center mb-4">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="logo-img pulse">
+                <div class="brand-text">
+                    <h4 class="m-0 fw-black text-info" style="letter-spacing: 1px; line-height: 1;">VILLA <br> DOLORES</h4>
+                </div>
+            </div>            
+            <div class="stat-card">
+                <span class="stat-label">🕒 Reloj</span>
+                <span class="stat-value" id="reloj">00:00:00</span>
+            </div>
+
+            <div class="stat-card" style="border-left-color: #ffc107;">
+                <span class="stat-label">🚗 En Patio</span>
+                <span class="stat-value text-warning">{{ en_parqueo }}</span>
+            </div>
+
+            <a href="/reimprimir_ultimo" class="btn btn-outline-info w-100 mb-3 fw-bold">🖨️ Reimprimir Último</a>
+            
+            <hr class="border-secondary">
+
+            <div id="contenedor_ingresos" class="bloque-protegido mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="text-secondary small fw-bold mb-0">INGRESOS RECIENTES</h6>
+                <button type="button" id="btn_ojo" onclick="toggleIngresos()" class="btn btn-sm btn-outline-info border-0" style="font-size: 1.2rem; padding: 0 5px;">
+                    👁️‍🗨️
+                </button>
+            </div>
+            
+            <div class="pos-relative" style="position: relative; min-height: 40px;">
+                <div id="capa_negra" class="capa-bloqueo" onclick="toggleIngresos()" style="top: 0; height: 100%; border-radius: 5px;">
+                    </div>
+
+                <div class="lista-ingresos">
+                    {% for dia in ingresos_dias %}
+                    <div class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-dark">
+                        <span class="text-light" style="font-size: 0.85rem;">{{ dia['dia'] }}</span>
+                        <span class="fw-bold text-info" style="font-size: 1rem;">Bs. {{ dia['total'] }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {% if session['rol'] == 'admin' %}
+            <hr class="border-secondary">
+            <h6 class="text-danger small fw-bold">PANEL ADMIN</h6>
+            <a href="/admin/usuarios" class="btn btn-dark btn-sm w-100 mb-2 border-secondary text-start">👥 Gestionar Usuarios</a>
+            <a href="/admin/exportar" class="btn btn-dark btn-sm w-100 mb-2 border-secondary text-start">📥 Exportar a Excel</a>
+            <button type="button" onclick="confirmarReinicioMaster()" class="btn btn-outline-danger btn-sm w-100 text-start">⚠️ Reiniciar desde Cero</button>
+            <form id="formResetMaster" action="/admin/reset_tickets" method="POST" style="display:none;"></form>
+            <button type="button" data-bs-toggle="modal" data-bs-target="#modalMaestra" class="btn btn-dark btn-sm w-100 mb-2 border-secondary text-start">🔑 Cambiar Clave Maestra</button>
+            {% endif %}
+
+            <div class="mt-auto pt-3 border-top border-secondary">
+                <span class="small text-secondary">Operador:</span><br>
+                <strong class="text-info">{{ session['usuario'] }}</strong>
+                <a href="/logout" class="btn btn-outline-danger btn-sm w-100 mt-2">Cerrar Sesión</a>
+            </div>
+        </nav>
+
+        <div id="content">
+            <div class="seccion-fija">
+            <div class="container-fluid mt-2">
+                {% if exito %}
+                <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert" style="border-left: 5px solid #198754;">
+                    <strong>✅ ¡Logrado!</strong> {{ exito }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endif %}
+
+                {% if error %}
+                <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert" style="border-left: 5px solid #dc3545;">
+                    <strong>⚠️ Error:</strong> {{ error }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endif %}
+            </div>
+            </div>  
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="card bg-primary p-4 border-0 text-white shadow">
+                        <h4 class="fw-bold">ENTRADA</h4>
+                        <form id="formEntrada" action="/registrar" method="POST">
+                            <input type="text" name="placa" id="inputPlaca" class="form-control form-control-lg text-center fw-bold mb-3" 
+                                   placeholder="PLACA" autofocus style="font-size: 2.5rem; height: 80px; text-transform: uppercase;">
+                            <input type="hidden" name="tipo" id="tipoVehiculo" value="AUTO">
+                            <div class="row g-2">
+                                <div class="col-6"><button type="button" onclick="enviarRegistro('AUTO')" class="btn btn-light btn-lg w-100 fw-bold py-3">🚗 AUTO (F1)</button></div>
+                                <div class="col-6"><button type="button" onclick="enviarRegistro('MOTO')" class="btn btn-dark btn-lg w-100 fw-bold py-3" style="border:1px solid white;">🏍️ MOTO (F2)</button></div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card bg-warning text-dark p-4 border-0 shadow">
+                        <h4 class="fw-bold">SALIDA / COBRO</h4>
+                        <form action="/salida_unificada" method="POST" autocomplete="off" class="position-relative">
+                            <input type="text" id="input_busqueda" name="codigo_qr" 
+                                   class="form-control form-control-lg text-center fw-bold mb-3" 
+                                   placeholder="PLACA O ID" required
+                                   style="font-size: 2.5rem; height: 80px; text-transform: uppercase; border: 2px solid #000;">
+                            <div id="lista_sugerencias" class="position-absolute w-100 shadow-lg" style="top: 85px; z-index: 1050;"></div>
+                            <button type="submit" class="btn btn-dark btn-lg w-100 fw-bold py-3">💰 COBRAR (F3)</button>
+                        </form>
+                        {% if ticket_salida %}
+                        <div class="mt-3 p-3 bg-white rounded shadow-sm text-center">
+                            <h2 class="fw-bold mb-0">TOTAL: Bs. <span id="montoT">{{ ticket_salida.monto }}</span></h2>
+                            <p class="small text-muted">Placa: {{ ticket_salida.placa }} | Tiempo: {{ ticket_salida.tiempo }} min</p>
+                            <input type="number" id="pagoCon" class="form-control form-control-lg text-center mt-2" placeholder="Paga con..." oninput="calcV()">
+                            <h4 class="mt-2 fw-bold text-danger" id="vuelto">CAMBIO: Bs. 0</h4>
+                            <a href="/" class="btn btn-success btn-lg w-100 mt-2">FINALIZAR</a>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="seccion-scroll">
+            <div class="card bg-dark text-white border-secondary shadow mt-2">
+                <div class="card-header bg-dark border-secondary d-flex justify-content-between align-items-center">
+                    <h5 class="m-0 text-info">📑 ÚLTIMOS MOVIMIENTOS</h5>
+                    <input type="text" id="buscadorTabla" 
+                    placeholder="🔍 Buscar Placa o ID..." 
+                    class="form-control form-control-sm bg-black text-white border-secondary w-50 ms-3" 
+                    autocomplete="new-password">
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-dark table-hover m-0 tabla-movimientos">
+                        
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Placa</th>
+                                <th>Tipo</th>
+                                <th onclick="ordenarPorHoraEntrada()" style="cursor: pointer;" title="Ordenar por hora">Entrada</th>
+                                <th>Salida</th>
+                                <th>Monto</th>
+                                <th onclick="ordenarPorEstado()" style="cursor: pointer;" title="Haz clic para ordenar">Estado</th>
+                                <th>Operadores (E/S)</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>    
+                        <tbody>
+                            {% for reg in ultimos_movimientos %}
+                            <tr class="{% if reg['estado'] == 'ACTIVO' %}row-active{% endif %}">
+                                <td>{{ reg['id'] }}</td>
+                                <td class="fw-bold text-info placa-editable" 
+                                    contenteditable="true" 
+                                    onblur="guardarPlacaRapido(this, '{{ reg.id }}')"
+                                    onkeydown="verificarEnter(event, this)"
+                                    data-original="{{ reg.placa }}">
+                                    {{ reg.placa if reg.placa else '' }}
+                                </td>
+                                <td class="fw-bold text-info">{{ reg['tipo'] }}</td>                             
+                                <td>{{ reg['hora_e'] }}</td>
+                                <td>{{ reg['hora_s'] if reg['hora_s'] else '--:--' }}</td>
+                                <td class="text-warning fw-bold">Bs. {{ reg['monto_pagado'] }}</td>
+                                <td><span class="badge {% if reg['estado'] == 'ACTIVO' %}bg-primary{% else %}bg-success{% endif %}">{{ reg['estado'] }}</span></td>
+                                <td>
+                                    <div style="font-size: 0.9rem; line-height: 1; margin: 0;">
+                                        <span class="text-secondary">E:</span> {{ reg['usuario_registro'] or '---' }}<br>
+                                        <span class="text-success">S:</span> {{ reg['usuario_cobro'] or '---' }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <a href="/reimprimir/{{ reg['id'] }}" class="btn btn-sm btn-outline-light" title="Reimprimir">🖨️</a>
+                                    
+                                    {% if reg.estado == 'ACTIVO' %}
+                                    <button type="button" class="btn btn-sm btn-outline-danger ms-1" onclick="solicitarClaveEliminar('{{ reg.id }}')">
+                                        Eliminar
+                                    </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+
+        const MASTER_KEY = "{{ config_maestra }}";
+        let temporizadorBloqueo;
+
+        function revelarDatos() {
+            const ingresos = document.getElementById('contenedor_ingresos');
+            const btnOjo = document.getElementById('btn_ojo');
+            
+            ingresos.classList.add('revelado');
+            btnOjo.innerText = "👁️"; 
+            btnOjo.classList.replace('btn-outline-info', 'btn-info');
+
+            clearTimeout(temporizadorBloqueo);
+            temporizadorBloqueo = setTimeout(bloquearDatos, 60000); 
+        }
+
+        function bloquearDatos() {
+            const ingresos = document.getElementById('contenedor_ingresos');
+            const btnOjo = document.getElementById('btn_ojo');
+            
+            if (ingresos) {
+                ingresos.classList.remove('revelado');
+                btnOjo.innerText = "👁️‍🗨️"; 
+                btnOjo.classList.replace('btn-info', 'btn-outline-info');
+            }
+            clearTimeout(temporizadorBloqueo);
+        }
+
+        setInterval(() => { document.getElementById('reloj').innerText = new Date().toLocaleTimeString(); }, 1000);
+        
+        function calcV() {
+            const m = parseFloat(document.getElementById('montoT').innerText);
+            const p = parseFloat(document.getElementById('pagoCon').value) || 0;
+            document.getElementById('vuelto').innerText = "CAMBIO: Bs. " + (p - m > 0 ? (p - m).toFixed(1) : 0);
+        }
+
+        function enviarRegistro(tipo) {
+            const inputPlaca = document.getElementById('inputPlaca');
+            // Si la placa está vacía, le asignamos "  " (Sin Placa) automáticamente
+            if(inputPlaca.value.trim() === '') {
+                inputPlaca.value = " ";
+            }
+            document.getElementById('tipoVehiculo').value = tipo;
+            document.getElementById('formEntrada').submit();
+        }
+
+       
+        
+        window.addEventListener('keydown', (e) => {
+            if (e.key === "F1") { e.preventDefault(); enviarRegistro('AUTO'); }
+            if (e.key === "F2") { e.preventDefault(); enviarRegistro('MOTO'); }
+            if (e.key === "F3") { e.preventDefault(); document.getElementById('input_busqueda').focus(); }
+            if (e.key === "Escape") document.getElementById('inputPlaca').focus();
+        });
+
+        const inputB = document.getElementById('input_busqueda');
+        const listaS = document.getElementById('lista_sugerencias');
+        let currentFocus = -1; // Variable para controlar el movimiento del teclado
+
+        if(inputB) {
+            inputB.addEventListener('input', async function() {
+                currentFocus = -1;
+                if (this.value.length < 2) { listaS.style.display = 'none'; return; }
+                
+                const res = await fetch(`/buscar_placa?q=${this.value}`);
+                const items = await res.json(); // Ahora recibimos objetos
+                listaS.innerHTML = '';
+                
+                // Encabezado de la lista
+                const header = document.createElement('div');
+                header.className = 'sugerencia-item bg-secondary text-white';
+                header.innerHTML = `<span>ID</span><span>Placa</span><span>Min</span><span>Bs</span>`;
+                listaS.appendChild(header);
+
+                items.forEach(p => {
+                    const item = document.createElement('div');
+                    item.className = 'sugerencia-item';
+                    // Construimos la fila con los datos
+                    item.innerHTML = `
+                        <span class="col-id">#${p.id}</span>
+                        <span>${p.placa}</span>
+                        <span>${p.tiempo}m</span>
+                        <span class="col-monto">Bs.${p.monto}</span>
+                    `;
+                    
+                    // Al hacer clic, rellenamos el buscador con el ID o Placa
+                    item.onclick = () => { 
+                        inputB.value = p.id; 
+                        listaS.style.display = 'none'; 
+                        inputB.focus(); 
+                    };
+                    listaS.appendChild(item);
+                });
+                
+                listaS.style.display = items.length > 0 ? 'block' : 'none';
+            });
+
+            // LÓGICA PARA NAVEGAR CON EL TECLADO EN LAS SUGERENCIAS
+            inputB.addEventListener('keydown', function(e) {
+                let items = listaS.getElementsByClassName('sugerencia-item');
+                if (listaS.style.display === 'block' && items.length > 0) {
+                    if (e.key === 'ArrowDown') {
+                        currentFocus++;
+                        addActive(items);
+                    } else if (e.key === 'ArrowUp') {
+                        currentFocus--;
+                        addActive(items);
+                    } else if (e.key === 'Enter') {
+                        if (currentFocus > -1) {
+                            e.preventDefault(); // Evitamos que el formulario se envíe directamente
+                            items[currentFocus].click(); // Simulamos el clic en la opción elegida
+                        }
+                    }
+                }
+            });
+
+            function addActive(items) {
+                if (!items) return false;
+                removeActive(items);
+                if (currentFocus >= items.length) currentFocus = 0;
+                if (currentFocus < 0) currentFocus = (items.length - 1);
+                items[currentFocus].classList.add("active");
+            }
+
+            function removeActive(items) {
+                for (let i = 0; i < items.length; i++) {
+                    items[i].classList.remove("active");
+                }
+            }
+        }
+    </script>
+    
+<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+
+<div class="modal fade" id="modalMaestra" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark border-secondary text-white">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title text-info">🔑 Configurar Clave Maestra</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/admin/cambiar_maestra" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label small text-secondary">Contraseña de Administrador (Tu clave actual)</label>
+                        <input type="password" name="pass_admin" class="form-control bg-black text-white border-secondary" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small text-secondary">Nueva Clave Maestra (Para Caja/Reiniciar)</label>
+                        <input type="password" name="nueva_clave" class="form-control bg-black text-info border-info" required>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-info fw-bold">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<script>
+    
+
+
+    // --- LÓGICA PARA ORDENAR POR ESTADO ---
+    let ordenAscendente = true;
+    function ordenarPorEstado() {
+        let tbody = document.querySelector("table tbody");
+        let filas = Array.from(tbody.rows);
+
+        filas.sort((a, b) => {
+            // El índice 5 corresponde a la columna "Estado" (0=ID, 1=Placa, 2=Entrada...)
+            let estadoA = a.cells[6].innerText.trim();
+            let estadoB = b.cells[6].innerText.trim();
+
+            if (estadoA < estadoB) return ordenAscendente ? -1 : 1;
+            if (estadoA > estadoB) return ordenAscendente ? 1 : -1;
+            return 0;
+        });
+
+        // Alternar el orden para el próximo clic y reinsertar las filas
+        ordenAscendente = !ordenAscendente;
+        tbody.append(...filas); 
+    }
+
+    // --- LÓGICA DEL BUSCADOR DINÁMICO ---
+    document.getElementById('buscadorTabla').addEventListener('keyup', function() {
+        let filtro = this.value.toUpperCase();
+        let filas = document.querySelectorAll('.tabla-movimientos tbody tr');
+
+        filas.forEach(fila => {
+            let id = fila.cells[0].innerText.toUpperCase();
+            let placa = fila.cells[1].innerText.toUpperCase();
+            
+            // Si el filtro coincide con ID o Placa, se muestra la fila, si no, se oculta
+            if (id.includes(filtro) || placa.includes(filtro)) {
+                fila.style.display = '';
+            } else {
+                fila.style.display = 'none';
+            }
+        });
+    });
+
+            document.addEventListener("DOMContentLoaded", function() {
+            const ticket = document.getElementById('ticket-imprimir');
+            if (ticket) {
+                console.log("Ticket detectado, preparando impresión...");
+                // Esperamos a que todo (estilos e imágenes) cargue bien
+                setTimeout(() => {
+                    window.print();
+                }, 100); 
+            }
+        });
+
+        // --- FUNCIÓN UNIVERSAL DE SEGURIDAD (CON ASTERISCOS) ---
+function validarMaestra(titulo, accionExitosa) {
+    const capa = document.createElement('div');
+    capa.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; display:flex; align-items:center; justify-content:center; backdrop-filter: blur(4px);";
+    
+    const dialogo = document.createElement('div');
+    dialogo.className = "bg-dark border border-info p-4 rounded shadow-lg text-center";
+    dialogo.style = "width: 300px; border-width: 2px !important;";
+    dialogo.innerHTML = `
+        <div class="mb-3"><span style="font-size: 2rem;">🔑</span></div>
+        <h6 class="text-info mb-3 fw-bold">${titulo}</h6>
+        <input type="password" id="clave_temp" class="form-control mb-3 text-center bg-black text-white border-info" placeholder="······" autofocus>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary w-100" id="btn_cancel">Cancelar</button>
+            <button class="btn btn-sm btn-info w-100 fw-bold" id="btn_confirm">Confirmar</button>
+        </div>
+    `;
+    
+    capa.appendChild(dialogo);
+    document.body.appendChild(capa);
+    
+    const input = document.getElementById('clave_temp');
+    input.focus();
+
+    // Lógica Cerrar
+    const cerrar = () => document.body.removeChild(capa);
+    document.getElementById('btn_cancel').onclick = cerrar;
+
+    // Lógica Confirmar
+    document.getElementById('btn_confirm').onclick = function() {
+        if (input.value === MASTER_KEY) {
+            cerrar();
+            accionExitosa(); // Ejecuta la función que le pasemos
+        } else {
+            alert("❌ Contraseña Maestra incorrecta");
+            input.value = "";
+            input.focus();
+        }
+    };
+
+    input.addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('btn_confirm').click(); });
+}
+
+// --- ACCIONES ESPECÍFICAS USANDO LA VALIDACIÓN ---
+
+// 1. Para ver la caja (Ingresos)
+function toggleIngresos() {
+    const ingresos = document.getElementById('contenedor_ingresos');
+    if (ingresos.classList.contains('revelado')) {
+        bloquearDatos();
+    } else {
+        validarMaestra("VER INGRESOS DE CAJA", revelarDatos);
+    }
+}
+
+// 2. Para eliminar un vehículo
+function solicitarClaveEliminar(id) {
+    validarMaestra("ELIMINAR REGISTRO #" + id, function() {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/eliminar_vehiculo/' + id;
+        const inputHidden = document.createElement('input');
+        inputHidden.type = 'hidden';
+        inputHidden.name = 'clave_maestra';
+        inputHidden.value = MASTER_KEY; // Ya validada arriba
+        form.appendChild(inputHidden);
+        document.body.appendChild(form);
+        form.submit();
+    });
+}
+
+// 3. Para reiniciar el sistema
+function confirmarReinicioMaster() {
+    validarMaestra("REINICIAR TODO EL SISTEMA", function() {
+        if (confirm("⚠️ ¿ESTÁ TOTALMENTE SEGURO? Se borrarán todos los datos.")) {
+            document.getElementById('formResetMaster').submit();
+        }
+    });
+}
+
+// Si presiona Enter, quita el foco de la celda para activar el guardado
+function verificarEnter(event, elemento) {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        elemento.blur(); 
+    }
+}
+
+
+async function guardarPlacaRapido(elemento, id) {
+    const nuevaPlaca = elemento.innerText.trim().toUpperCase();
+    const placaOriginal = elemento.getAttribute('data-original');
+    
+    // Si no hay cambios, no hacemos nada
+    if (nuevaPlaca === placaOriginal) return; 
+
+    const formData = new FormData();
+    formData.append('id_ticket', id);
+    formData.append('nueva_placa', nuevaPlaca);
+
+    try {
+        const respuesta = await fetch('/editar_placa', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (respuesta.ok) {
+            // Actualizamos el atributo para que futuras ediciones sepan el nuevo valor original
+            elemento.setAttribute('data-original', nuevaPlaca);
+            
+            // Efecto visual: la placa se pone verde un momento para confirmar el guardado
+            elemento.style.color = "#00ff00"; 
+            
+            setTimeout(() => { 
+                elemento.style.color = "var(--primary)"; 
+            }, 1000);
+        } else {
+            throw new Error('Error en el servidor');
+        }
+    } catch (error) {
+        console.error("Error:", error);
+        alert("⚠️ No se pudo sincronizar. Por favor, intenta de nuevo.");
+        // Revertimos el texto si hubo un error de conexión
+        elemento.innerText = placaOriginal; 
+    }
+}
+
+let ordenHoraAsc = true;
+
+function ordenarPorHoraEntrada() {
+    let tbody = document.querySelector(".tabla-movimientos tbody");
+    let filas = Array.from(tbody.rows);
+
+    filas.sort((a, b) => {
+        // El índice 3 corresponde a la columna "Entrada"
+        let horaA = a.cells[3].innerText.trim();
+        let horaB = b.cells[3].innerText.trim();
+
+        // Comparación simple de strings (funciona bien para formato HH:MM o HH:MM:SS)
+        if (horaA < horaB) return ordenHoraAsc ? -1 : 1;
+        if (horaA > horaB) return ordenHoraAsc ? 1 : -1;
+        return 0;
+    });
+
+    // Alternar el orden para el siguiente clic
+    ordenHoraAsc = !ordenHoraAsc;
+    
+    // Reinsertar las filas ordenadas en la tabla
+    tbody.append(...filas);
+}
+</script>
+
+</body>
+</html>

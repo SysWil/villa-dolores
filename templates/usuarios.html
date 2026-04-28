@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Usuarios - Control Pro</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <style>
+        body { background-color: #0a0a0a; color: white; font-family: 'Segoe UI', sans-serif; }
+        .card { background: #161616; border: 1px solid #333; }
+        .form-control, .form-select { background: #222; border: 1px solid #444; color: white; }
+        .form-control:focus { background: #252525; color: white; border-color: #0dcaf0; box-shadow: none; }
+    </style>
+</head>
+<body class="p-4">
+    <div class="container" style="max-width: 800px;">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="text-info fw-bold">👥 Gestión de Personal</h2>
+            <a href="/" class="btn btn-outline-light">⬅️ Volver</a>
+          
+        </div>
+
+        <div class="card p-4 mb-4">
+            <h5 class="mb-3 text-white">Registrar Nuevo Empleado</h5>
+            <form action="/admin/usuarios/crear" method="POST" class="row g-2">
+                <div class="col-md-4">
+                    <input type="text" name="username" class="form-control" placeholder="Usuario" required>
+                </div>
+                <div class="col-md-4">
+                    <input type="password" name="password" class="form-control" placeholder="Contraseña" required>
+                </div>
+                <div class="col-md-2" >
+                    <select name="rol" class="form-select">
+                        <option value="empleado">Empleado</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-info w-100 fw-bold">CREAR</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="card p-3">
+            <table class="table table-dark table-hover mt-4">
+                <thead>
+                    <tr>
+                        <th>Usuario</th>
+                        <th>Rol</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in usuarios %}
+                    <tr>
+                        <td>{{ u.username }}</td>
+                        <td><span class="badge badge-info">{{ u.rol }}</span></td>
+                        <td>
+                            {% if u.username != session['usuario'] %}
+                            <form action="{{ url_for('eliminar_usuario', id=u.id) }}" method="POST" style="display:inline;">
+                                <button type="submit" class="btn btn-danger btn-sm" 
+                                        onclick="return confirm('¿Estás seguro de eliminar a este usuario?')">
+                                    <i class="fas fa-trash"></i> Eliminar
+                                </button>
+                            </form>
+                            {% else %}
+                            <small class="text-muted">Eres tú (Activo)</small>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
